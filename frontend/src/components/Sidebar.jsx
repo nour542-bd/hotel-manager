@@ -22,6 +22,7 @@ export function Sidebar() {
     { icon: Building2, label: 'Hôtels', path: '/admin/hotels' },
     { icon: Calendar, label: 'Réservations', path: '/admin/reservations' },
     { icon: Users, label: 'Clients', path: '/admin/clients' },
+    { icon: Calendar, label: 'Calendrier', path: '/admin/calendar' },
   ] : [
     { icon: LayoutDashboard, label: 'Mon Tableau', path: '/client' },
     { icon: Calendar, label: 'Mes Réservations', path: '/client/reservations' },

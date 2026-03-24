@@ -1,43 +1,138 @@
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Edit2, Plus } from 'lucide-react';
 import api from '../../lib/api';
 
 export function ReservationsAdmin() {
   const [reservations, setReservations] = useState([]);
+  const [hotels, setHotels] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  const [formData, setFormData] = useState({
+    client: '',
+    hotel: '',
+    room: '',
+    checkInDate: '',
+    checkOutDate: '',
+    numberOfGuests: 1,
+    status: 'pending',
+    totalPrice: 0,
+    paymentStatus: 'pending',
+    specialRequests: '',
+  });
 
   useEffect(() => {
-    fetchReservations();
+    fetchAll();
   }, []);
 
-  const fetchReservations = async () => {
+  const fetchAll = async () => {
     try {
-      const response = await api.get('/reservations');
-      setReservations(response.data);
+      const [resRes, hotelsRes, clientsRes] = await Promise.all([
+        api.get('/reservations'),
+        api.get('/hotels'),
+        api.get('/clients'),
+      ]);
+
+      setReservations(resRes.data);
+      setHotels(hotelsRes.data);
+      setClients(clientsRes.data);
     } catch (err) {
-      console.error('Erreur', err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchRoomsByHotel = async (hotelId) => {
+    try {
+      const res = await api.get('/rooms/hotel/' + hotelId);
+      setRooms(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleHotelChange = (hotelId) => {
+    setFormData({ ...formData, hotel: hotelId, room: '' });
+    if (hotelId) fetchRoomsByHotel(hotelId);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    try {
+      if (editingId) {
+        await api.put('/reservations/' + editingId, formData);
+      } else {
+        await api.post('/reservations', formData);
+      }
+
+      resetForm();
+      fetchAll();
+    } catch (err) {
+      alert('Erreur: ' + (err.response?.data?.message || 'Erreur serveur'));
+    }
+  };
+
   const handleDelete = async (id) => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer cette réservation?')) {
+    if (confirm('Supprimer cette réservation ?')) {
       try {
-        await api.delete(`/reservations/${id}`);
-        fetchReservations();
+        await api.delete('/reservations/' + id);
+        fetchAll();
       } catch (err) {
-        console.error('Erreur', err);
+        console.error(err);
       }
     }
   };
 
-  const filteredReservations = filter === 'all' 
-    ? reservations 
-    : reservations.filter(r => r.status === filter);
+  const handleEdit = (res) => {
+    setFormData({
+      client: res.client?._id || '',
+      hotel: res.hotel?._id || '',
+      room: res.room?._id || '',
+      checkInDate: res.checkInDate?.split('T')[0] || '',
+      checkOutDate: res.checkOutDate?.split('T')[0] || '',
+      numberOfGuests: res.numberOfGuests || 1,
+      status: res.status || 'pending',
+      totalPrice: res.totalPrice || 0,
+      paymentStatus: res.paymentStatus || 'pending',
+      specialRequests: res.specialRequests || '',
+    });
+
+    if (res.hotel?._id) fetchRoomsByHotel(res.hotel._id);
+
+    setEditingId(res._id);
+    setShowForm(true);
+    window.scrollTo(0, 0);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      client: '',
+      hotel: '',
+      room: '',
+      checkInDate: '',
+      checkOutDate: '',
+      numberOfGuests: 1,
+      status: 'pending',
+      totalPrice: 0,
+      paymentStatus: 'pending',
+      specialRequests: '',
+    });
+
+    setEditingId(null);
+    setShowForm(false);
+    setRooms([]);
+  };
+
+  const filteredReservations =
+    filter === 'all'
+      ? reservations
+      : reservations.filter((r) => r.status === filter);
 
   const statusColors = {
     pending: 'bg-yellow-900 text-yellow-200',
@@ -47,69 +142,174 @@ export function ReservationsAdmin() {
     cancelled: 'bg-red-900 text-red-200',
   };
 
+  const inputClass =
+    "w-full px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-yellow-400";
+
+  const labelClass =
+    "block text-sm font-medium text-slate-300 mb-1";
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">Réservations</h1>
-        <p className="text-slate-400">Gestion de toutes les réservations</p>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Reservations</h1>
+          <p className="text-slate-400">
+            Gestion de toutes les reservations
+          </p>
+        </div>
+
+        <button
+          onClick={() => {
+            resetForm();
+            setShowForm(!showForm);
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold rounded-lg"
+        >
+          <Plus size={20} />
+          Nouvelle Reservation
+        </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-2 flex-wrap">
-        {['all', 'pending', 'confirmed', 'checked-in', 'checked-out', 'cancelled'].map((status) => (
-          <Button
-            key={status}
-            variant={filter === status ? 'primary' : 'secondary'}
-            onClick={() => setFilter(status)}
-            className="capitalize"
-          >
-            {status}
-          </Button>
-        ))}
-      </div>
+      {showForm && (
+        <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
 
-      {/* List */}
-      <div className="grid gap-4">
-        {loading ? (
-          <p className="text-slate-400">Chargement...</p>
-        ) : filteredReservations.length === 0 ? (
-          <p className="text-slate-400">Aucune réservation</p>
-        ) : (
-          filteredReservations.map((res) => (
-            <Card key={res._id}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between gap-6">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-lg font-semibold text-white">{res.reservationNumber}</h3>
-                      <span className={`text-xs px-2 py-1 rounded capitalize ${statusColors[res.status]}`}>
-                        {res.status}
-                      </span>
-                    </div>
-                    <p className="text-slate-300">{res.client?.name} • {res.hotel?.name}</p>
-                    <p className="text-sm text-slate-500 mt-1">
-                      Chambre {res.room?.roomNumber} ({res.room?.type})
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {new Date(res.checkInDate).toLocaleDateString('fr-FR')} → {new Date(res.checkOutDate).toLocaleDateString('fr-FR')}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-secondary">${res.totalPrice}</p>
-                    <p className="text-sm text-slate-400 mt-2">Paiement: {res.paymentStatus}</p>
-                    <button
-                      onClick={() => handleDelete(res._id)}
-                      className="mt-4 p-2 rounded-lg hover:bg-slate-800 transition-colors"
-                    >
-                      <Trash2 size={18} className="text-destructive" />
-                    </button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+          <h2 className="text-white font-bold text-lg mb-4">
+            {editingId ? 'Modifier' : 'Ajouter'} une Reservation
+          </h2>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              <div>
+                <label className={labelClass}>Client</label>
+
+                <select
+                  className={inputClass}
+                  value={formData.client}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client: e.target.value })
+                  }
+                  required
+                >
+                  <option value="">Selectionner un client</option>
+
+                  {clients.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.name} - {c.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelClass}>Hotel</label>
+
+                <select
+                  className={inputClass}
+                  value={formData.hotel}
+                  onChange={(e) =>
+                    handleHotelChange(e.target.value)
+                  }
+                  required
+                >
+                  <option value="">Selectionner un hotel</option>
+
+                  {hotels.map((h) => (
+                    <option key={h._id} value={h._id}>
+                      {h.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelClass}>Chambre</label>
+
+                <select
+                  className={inputClass}
+                  value={formData.room}
+                  onChange={(e) =>
+                    setFormData({ ...formData, room: e.target.value })
+                  }
+                  required
+                >
+                  <option value="">Selectionner une chambre</option>
+
+                  {rooms.map((r) => (
+                    <option key={r._id} value={r._id}>
+                      {r.roomNumber} - {r.type} - {r.price} TND/nuit
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelClass}>Nombre de guests</label>
+
+                <input
+                  type="number"
+                  className={inputClass}
+                  value={formData.numberOfGuests}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      numberOfGuests: e.target.value,
+                    })
+                  }
+                  min="1"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>Date Check-in</label>
+
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={formData.checkInDate}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      checkInDate: e.target.value,
+                    })
+                  }
+                  required
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>Date Check-out</label>
+
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={formData.checkOutDate}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      checkOutDate: e.target.value,
+                    })
+                  }
+                  required
+                />
+              </div>
+
+            </div>
+
+            <button
+              type="submit"
+              className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg"
+            >
+              Enregistrer
+            </button>
+
+          </form>
+        </div>
+      )}
+
     </div>
   );
 }
