@@ -15,10 +15,20 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/hotelmanager')
-  .then(() => console.log('✓ MongoDB connected'))
-  .catch((err) => console.error('✗ MongoDB connection error:', err));
+// Connect to MongoDB with better error handling
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/hotelmanager';
+
+mongoose.connect(MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+})
+  .then(() => console.log('✓ MongoDB connected successfully'))
+  .catch((err) => {
+    console.error('✗ MongoDB connection error:', err.message);
+    console.log('\n⚠️  Make sure MongoDB is running:');
+    console.log('   - Local: Start MongoDB service or run "mongod"');
+    console.log('   - Or use MongoDB Atlas (cloud): https://www.mongodb.com/cloud/atlas\n');
+  });
 
 // Routes
 app.get('/api/health', (req, res) => {
@@ -31,12 +41,14 @@ import hotelRoutes from './routes/hotels.js';
 import roomRoutes from './routes/rooms.js';
 import reservationRoutes from './routes/reservations.js';
 import clientRoutes from './routes/clients.js';
+import notificationRoutes from './routes/notifications.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/hotels', hotelRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/clients', clientRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 handler
 app.use((req, res) => {

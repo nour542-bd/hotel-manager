@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Building2, Calendar, Users, TrendingUp, DollarSign } from 'lucide-react';
+import { Building2, Calendar, Users, TrendingUp, DollarSign, Hotel, RefreshCw } from 'lucide-react';
+import { Button } from '../../components/ui/Button';
 import api from '../../lib/api';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -15,67 +16,73 @@ export function AdminDashboard() {
   const [monthlyData, setMonthlyData] = useState([]);
   const [hotelData, setHotelData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+
+  const fetchData = async () => {
+    try {
+      const [hotelsRes, reservationsRes, clientsRes] = await Promise.all([
+        api.get('/hotels'),
+        api.get('/reservations'),
+        api.get('/clients'),
+      ]);
+
+      const reservations = reservationsRes.data;
+      const hotels = hotelsRes.data;
+
+      // Stats générales
+      const revenue = reservations
+        .filter(r => r.paymentStatus === 'completed')
+        .reduce((sum, r) => sum + r.totalPrice, 0);
+
+      setStats({
+        hotels: hotels.length,
+        reservations: reservations.length,
+        clients: clientsRes.data.length,
+        revenue,
+      });
+
+      // Réservations récentes
+      setRecentReservations(reservations.slice(0, 5));
+
+      // Données pour graphique camembert (statuts)
+      const statusCount = reservations.reduce((acc, r) => {
+        acc[r.status] = (acc[r.status] || 0) + 1;
+        return acc;
+      }, {});
+      setStatusData(Object.entries(statusCount).map(([name, value]) => ({ name, value })));
+
+      // Données par hôtel
+      const hotelCount = reservations.reduce((acc, r) => {
+        const hotelName = r.hotel?.name || 'Inconnu';
+        acc[hotelName] = (acc[hotelName] || 0) + 1;
+        return acc;
+      }, {});
+      setHotelData(Object.entries(hotelCount).map(([name, reservations]) => ({ name: name.substring(0, 15), reservations })));
+
+      // Données mensuelles
+      const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+      const monthly = months.map((month, idx) => ({
+        month,
+        reservations: reservations.filter(r => new Date(r.createdAt).getMonth() === idx).length,
+        revenue: reservations
+          .filter(r => new Date(r.createdAt).getMonth() === idx && r.paymentStatus === 'completed')
+          .reduce((sum, r) => sum + r.totalPrice, 0),
+      }));
+      setMonthlyData(monthly);
+
+      setLastUpdated(new Date());
+      setLoading(false);
+    } catch (err) {
+      console.error(err);
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [hotelsRes, reservationsRes, clientsRes] = await Promise.all([
-          api.get('/hotels'),
-          api.get('/reservations'),
-          api.get('/clients'),
-        ]);
-
-        const reservations = reservationsRes.data;
-        const hotels = hotelsRes.data;
-
-        // Stats générales
-        const revenue = reservations
-          .filter(r => r.paymentStatus === 'completed')
-          .reduce((sum, r) => sum + r.totalPrice, 0);
-
-        setStats({
-          hotels: hotels.length,
-          reservations: reservations.length,
-          clients: clientsRes.data.length,
-          revenue,
-        });
-
-        // Réservations récentes
-        setRecentReservations(reservations.slice(0, 5));
-
-        // Données pour graphique camembert (statuts)
-        const statusCount = reservations.reduce((acc, r) => {
-          acc[r.status] = (acc[r.status] || 0) + 1;
-          return acc;
-        }, {});
-        setStatusData(Object.entries(statusCount).map(([name, value]) => ({ name, value })));
-
-        // Données par hôtel
-        const hotelCount = reservations.reduce((acc, r) => {
-          const hotelName = r.hotel?.name || 'Inconnu';
-          acc[hotelName] = (acc[hotelName] || 0) + 1;
-          return acc;
-        }, {});
-        setHotelData(Object.entries(hotelCount).map(([name, reservations]) => ({ name: name.substring(0, 15), reservations })));
-
-        // Données mensuelles
-        const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-        const monthly = months.map((month, idx) => ({
-          month,
-          reservations: reservations.filter(r => new Date(r.createdAt).getMonth() === idx).length,
-          revenue: reservations
-            .filter(r => new Date(r.createdAt).getMonth() === idx && r.paymentStatus === 'completed')
-            .reduce((sum, r) => sum + r.totalPrice, 0),
-        }));
-        setMonthlyData(monthly);
-
-        setLoading(false);
-      } catch (err) {
-        console.error(err);
-        setLoading(false);
-      }
-    };
     fetchData();
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   if (loading) return (
@@ -94,9 +101,27 @@ export function AdminDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white">📊 Tableau de Bord</h1>
-        <p className="text-slate-400">Vue d'ensemble de votre activité hôtelière</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+            <Hotel className="text-secondary" size={32} />
+            📊 Tableau de Bord
+          </h1>
+          <p className="text-slate-400 mt-1">Vue d'ensemble de votre activité hôtelière</p>
+          <p className="text-slate-500 text-xs mt-2 flex items-center gap-2">
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            Dernière mise à jour: {lastUpdated.toLocaleTimeString()}
+          </p>
+        </div>
+        <Button
+          onClick={fetchData}
+          variant="outline"
+          className="border-secondary text-secondary hover:bg-secondary hover:text-primary"
+          disabled={loading}
+        >
+          <RefreshCw size={18} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Actualiser
+        </Button>
       </div>
 
       {/* Stats Cards */}

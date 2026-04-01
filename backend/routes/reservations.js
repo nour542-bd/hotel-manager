@@ -1,6 +1,12 @@
 import express from 'express';
 import Reservation from '../models/Reservation.js';
 import { protect, authorize } from '../middleware/auth.js';
+import {
+  notifyNewReservation,
+  notifyCancelledReservation,
+  notifyReservationStatus,
+  notifyPaymentStatus
+} from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -63,7 +69,7 @@ router.get('/:id', protect, async (req, res) => {
 // Create reservation
 router.post('/', protect, async (req, res) => {
   try {
-    const { room, hotel, checkInDate, checkOutDate, numberOfGuests, specialRequests, totalPrice } = req.body;
+    const { room, hotel, checkInDate, checkOutDate, numberOfGuests, specialRequests, totalPrice, paymentMethod } = req.body;
 
     const reservation = new Reservation({
       client: req.user.id,
@@ -74,9 +80,22 @@ router.post('/', protect, async (req, res) => {
       numberOfGuests,
       specialRequests,
       totalPrice,
+      paymentMethod: paymentMethod || 'card',
     });
 
     await reservation.save();
+    
+    // Populate for notifications
+    const populatedReservation = await Reservation.findById(reservation._id)
+      .populate('client', 'name')
+      .populate('hotel', 'name');
+    
+    // Notify admins about new reservation
+    await notifyNewReservation(populatedReservation);
+    
+    // Notify client about their reservation (pending status)
+    await notifyReservationStatus(populatedReservation, 'pending');
+    
     res.status(201).json(reservation);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
@@ -90,6 +109,21 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
     if (!reservation) {
       return res.status(404).json({ message: 'Reservation not found' });
     }
+    
+    // Populate for notifications
+    const populatedReservation = await Reservation.findById(reservation._id)
+      .populate('client', 'name')
+      .populate('hotel', 'name');
+    
+    // Send notifications based on status changes
+    if (req.body.status) {
+      await notifyReservationStatus(populatedReservation, req.body.status);
+    }
+    
+    if (req.body.paymentStatus) {
+      await notifyPaymentStatus(populatedReservation, req.body.paymentStatus);
+    }
+    
     res.json(reservation);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
@@ -100,7 +134,7 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
 router.put('/:id/cancel', protect, async (req, res) => {
   try {
     const reservation = await Reservation.findById(req.params.id);
-    
+
     if (!reservation) {
       return res.status(404).json({ message: 'Reservation not found' });
     }
@@ -112,6 +146,17 @@ router.put('/:id/cancel', protect, async (req, res) => {
     reservation.status = 'cancelled';
     await reservation.save();
     
+    // Populate for notifications
+    const populatedReservation = await Reservation.findById(reservation._id)
+      .populate('client', 'name')
+      .populate('hotel', 'name');
+
+    // Notify admins about cancellation
+    await notifyCancelledReservation(populatedReservation);
+    
+    // Notify client about cancellation
+    await notifyReservationStatus(populatedReservation, 'cancelled');
+
     res.json(reservation);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });

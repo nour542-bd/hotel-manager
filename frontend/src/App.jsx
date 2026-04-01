@@ -5,6 +5,7 @@ import { DashboardLayout } from './components/DashboardLayout';
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
+import { HotelsListing } from './pages/HotelsListing';
 import { AdminDashboard } from './pages/admin/Dashboard';
 import { HotelsAdmin } from './pages/admin/Hotels';
 import { ReservationsAdmin } from './pages/admin/Reservations';
@@ -13,6 +14,7 @@ import { AdminCalendar } from './pages/admin/Calendar';
 import { ClientHotels } from './pages/client/Hotels';
 import { ClientReservations } from './pages/client/Reservations';
 import { ClientDashboard } from './pages/client/Dashboard';
+import { Notifications } from './components/Notifications';
 
 function ProtectedRoute({ children, requiredRole }) {
   const { user, token } = useAuthStore();
@@ -30,6 +32,7 @@ function App() {
       <Routes>
         {/* Public */}
         <Route path="/" element={<Home />} />
+        <Route path="/hotels" element={<HotelsListing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
@@ -74,6 +77,11 @@ function App() {
         <Route path="/client/reservations" element={
           <ProtectedRoute requiredRole="client">
             <DashboardLayout><ClientReservations /></DashboardLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/notifications" element={
+          <ProtectedRoute>
+            <DashboardLayout><Notifications /></DashboardLayout>
           </ProtectedRoute>
         } />
 
